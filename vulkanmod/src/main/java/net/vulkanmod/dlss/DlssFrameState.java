@@ -42,6 +42,11 @@ public final class DlssFrameState {
     private static int renderHeight = 0;
     private static long frameCounter = 0;
 
+    // Debug: L1 norm of (currentVP - previousVP) — ~0 when camera is still, >0 when it moves.
+    private static float lastVpDelta = 0.0f;
+    private static final float[] tmpCur = new float[16];
+    private static final float[] tmpPrev = new float[16];
+
     /** Master switch — when false (default for now) nothing here affects rendering. */
     public static boolean enabled = false;
     /** Whether the computed jitter should actually be applied to the projection (Phase 3+). */
@@ -55,6 +60,12 @@ public final class DlssFrameState {
      * Rolls current→previous and advances the jitter phase.
      */
     public static void beginFrame() {
+        Window w = Minecraft.getInstance().getWindow();
+        beginFrame(w.getWidth(), w.getHeight());
+    }
+
+    /** Pure frame-roll (no Minecraft dependency) — directly exercised by DlssSelfTest. */
+    public static void beginFrame(int width, int height) {
         frameCounter++;
 
         // Roll the view-projection: this frame's "previous" is last frame's "current".
@@ -64,9 +75,8 @@ public final class DlssFrameState {
         }
         currentSetThisFrame = false;
 
-        Window w = Minecraft.getInstance().getWindow();
-        renderWidth = w.getWidth();
-        renderHeight = w.getHeight();
+        renderWidth = width;
+        renderHeight = height;
 
         // Advance Halton jitter. Index 0 of Halton is 0; start at 1.
         jitterIndex = (jitterIndex + 1) % jitterPhaseCount;
@@ -74,10 +84,11 @@ public final class DlssFrameState {
         jitterX = halton(h, 2) - 0.5f;   // [-0.5, 0.5] pixels
         jitterY = halton(h, 3) - 0.5f;
 
-        if (DEBUG && (frameCounter <= 6 || frameCounter % 600 == 0)) {
-            LOGGER.info("[DLSS Phase2] frame={} {}x{} jitterIdx={}/{} jitter=({}, {}) px  hasPrev={}",
-                    frameCounter, renderWidth, renderHeight, jitterIndex, jitterPhaseCount,
-                    String.format("%+.4f", jitterX), String.format("%+.4f", jitterY), hasPrevious);
+        if (DEBUG && (frameCounter <= 6 || (hasPrevious && frameCounter % 30 == 0) || frameCounter % 600 == 0)) {
+            LOGGER.info("[DLSS Phase2] frame={} {}x{} jitter=({}, {}) px  hasPrev={}  vpDelta={}",
+                    frameCounter, renderWidth, renderHeight,
+                    String.format("%+.4f", jitterX), String.format("%+.4f", jitterY),
+                    hasPrevious, String.format("%.5f", lastVpDelta));
         }
     }
 
@@ -89,7 +100,18 @@ public final class DlssFrameState {
         // VP = P * MV
         currentViewProj.set(projection).mul(modelView);
         currentSetThisFrame = true;
+
+        if (hasPrevious) {
+            currentViewProj.get(tmpCur);
+            previousViewProj.get(tmpPrev);
+            float d = 0.0f;
+            for (int i = 0; i < 16; i++) d += Math.abs(tmpCur[i] - tmpPrev[i]);
+            lastVpDelta = d;
+        }
     }
+
+    /** L1 norm of (currentVP − previousVP) for the latest frame; ~0 when the camera is still. */
+    public static float lastViewProjectionDelta() { return lastVpDelta; }
 
     /** Van der Corput / Halton sequence value for the given (1-based) index and base. */
     private static float halton(int index, int base) {

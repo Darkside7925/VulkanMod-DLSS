@@ -39,6 +39,11 @@ public class Initializer implements ClientModInitializer {
 			NativeBridge.initStreamline();
 		}
 
+		// Phase 2: optional headless validation of the temporal-state math.
+		if (Boolean.getBoolean("mcdlss.selftest")) {
+			net.vulkanmod.dlss.DlssSelfTest.run();
+		}
+
 		var configPath = FabricLoader.getInstance()
 				.getConfigDir()
 				.resolve("vulkanmod_settings.json");
