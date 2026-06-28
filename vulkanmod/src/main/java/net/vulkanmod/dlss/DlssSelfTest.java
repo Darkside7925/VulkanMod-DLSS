@@ -32,6 +32,7 @@ public final class DlssSelfTest {
         testRotatingCameraHasMotion();
         testFrameRoll();
         testMotionVectorMath();
+        testShadersCompile();
 
         LOGGER.info("[DLSS SelfTest] ==== {} ({} passed, {} failed) ====",
                 failed == 0 ? "ALL PASS" : "FAILURES", passed, failed);
@@ -172,6 +173,25 @@ public final class DlssSelfTest {
         }
         check("MV: matches analytic reprojection under camera motion", consistent);
         check("MV: camera rotation produces non-zero motion", anyMotion);
+    }
+
+    private static void testShadersCompile() {
+        compileOne("motion_vectors.vsh", net.vulkanmod.vulkan.shader.SPIRVUtils.ShaderKind.VERTEX_SHADER);
+        compileOne("motion_vectors.fsh", net.vulkanmod.vulkan.shader.SPIRVUtils.ShaderKind.FRAGMENT_SHADER);
+    }
+
+    private static void compileOne(String name, net.vulkanmod.vulkan.shader.SPIRVUtils.ShaderKind kind) {
+        String res = "/assets/vulkanmod/shaders/dlss/" + name;
+        try (java.io.InputStream in = DlssSelfTest.class.getResourceAsStream(res)) {
+            if (in == null) { check("Shader resource present: " + name, false); return; }
+            String src = new String(in.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
+            var spirv = net.vulkanmod.vulkan.shader.SPIRVUtils.compileShader(name, src, kind);
+            boolean ok = spirv != null && spirv.bytecode() != null && spirv.bytecode().remaining() > 0;
+            check("Shader compiles to SPIR-V: " + name, ok);
+            if (spirv != null) spirv.free();
+        } catch (Throwable t) {
+            check("Shader compiles to SPIR-V: " + name + " (" + t + ")", false);
+        }
     }
 
     private static boolean approx(float a, float b, float eps) { return Math.abs(a - b) <= eps; }
