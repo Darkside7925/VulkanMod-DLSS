@@ -3,6 +3,8 @@ package net.vulkanmod.dlss;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.joml.Matrix4f;
+import org.joml.Vector2f;
+import org.joml.Vector4f;
 
 /**
  * Deterministic, headless validation of {@link DlssFrameState} — the temporal basis the
@@ -29,6 +31,7 @@ public final class DlssSelfTest {
         testStaticCameraZeroMotion();
         testRotatingCameraHasMotion();
         testFrameRoll();
+        testMotionVectorMath();
 
         LOGGER.info("[DLSS SelfTest] ==== {} ({} passed, {} failed) ====",
                 failed == 0 ? "ALL PASS" : "FAILURES", passed, failed);
@@ -114,6 +117,61 @@ public final class DlssSelfTest {
                 DlssFrameState.previousViewProjection().equals(vpFrame1, 1e-5f));
         check("Roll: current == this frame's VP",
                 DlssFrameState.currentViewProjection().equals(new Matrix4f(p).mul(v1), 1e-5f));
+    }
+
+    private static void testMotionVectorMath() {
+        Matrix4f p = proj();
+        Matrix4f curVP  = new Matrix4f(p).mul(view(0f));
+        Matrix4f prevVP = new Matrix4f(p).mul(view(5f));   // camera rotated +5° last→this frame
+        Matrix4f invCur = new Matrix4f(curVP).invert();
+
+        // Sample pixels across the screen at varied depths.
+        float[][] samples = {
+                {0.50f, 0.50f, 0.30f}, {0.25f, 0.75f, 0.50f},
+                {0.80f, 0.20f, 0.70f}, {0.10f, 0.40f, 0.90f}
+        };
+
+        // 1) Round-trip: reconstruct world from (uv,depth) then re-project with curVP → recover (uv,depth).
+        boolean roundTripOk = true;
+        float maxErr = 0f;
+        float[] out = new float[3];
+        for (float[] s : samples) {
+            Vector4f world = MotionVectorMath.reconstructWorld(s[0], s[1], s[2], invCur, new Vector4f());
+            MotionVectorMath.projectToScreen(world, curVP, out);
+            float e = Math.abs(out[0] - s[0]) + Math.abs(out[1] - s[1]) + Math.abs(out[2] - s[2]);
+            maxErr = Math.max(maxErr, e);
+            if (e > 1e-3f) roundTripOk = false;
+        }
+        check("MV: reconstruct↔project round-trip (max err " + String.format("%.2e", maxErr) + ")", roundTripOk);
+
+        // 2) Static camera invariant: prevVP == curVP → motion vector is ~0 for every pixel.
+        // Tolerance reflects float32 inverse-VP round-trip precision (~1e-4 UV = sub-pixel),
+        // the same source bounded by the round-trip test above — not a tunable fudge factor.
+        final float STATIC_EPS = 1e-3f;
+        boolean staticZero = true;
+        float maxStatic = 0f;
+        Vector2f mv = new Vector2f();
+        for (float[] s : samples) {
+            MotionVectorMath.computeMotionVectorUV(s[0], s[1], s[2], invCur, curVP, mv);
+            maxStatic = Math.max(maxStatic, mv.length());
+            if (mv.length() > STATIC_EPS) staticZero = false;
+        }
+        check("MV: static camera → motion ≈ 0 within float precision (max "
+                + String.format("%.2e", maxStatic) + " UV)", staticZero);
+
+        // 3) Consistency: computed MV equals analytic (prevUV − curUV) from the same world point.
+        boolean consistent = true;
+        boolean anyMotion = false;
+        for (float[] s : samples) {
+            Vector4f world = MotionVectorMath.reconstructWorld(s[0], s[1], s[2], invCur, new Vector4f());
+            MotionVectorMath.projectToScreen(world, prevVP, out);
+            float expU = out[0] - s[0], expV = out[1] - s[1];
+            MotionVectorMath.computeMotionVectorUV(s[0], s[1], s[2], invCur, prevVP, mv);
+            if (Math.abs(mv.x - expU) > 1e-4f || Math.abs(mv.y - expV) > 1e-4f) consistent = false;
+            if (mv.length() > 1e-3f) anyMotion = true;
+        }
+        check("MV: matches analytic reprojection under camera motion", consistent);
+        check("MV: camera rotation produces non-zero motion", anyMotion);
     }
 
     private static boolean approx(float a, float b, float eps) { return Math.abs(a - b) <= eps; }
