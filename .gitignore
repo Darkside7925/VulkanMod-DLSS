@@ -1,0 +1,48 @@
+# Streamline SDK — external dependency, download + extract, never vendored.
+# (proprietary signed DLLs, NGX models, and the open headers clone)
+native_streamline_sdk/
+native_streamline/
+
+# Proprietary NVIDIA binaries — never commit (redistribute per NVIDIA license, not via VCS).
+*.zip
+sl.common.dll
+sl.deepdvc.dll
+sl.directsr.dll
+sl.dlss.dll
+sl.dlss_d.dll
+sl.dlss_g.dll
+sl.interposer.dll
+sl.nis.dll
+sl.nvperf.dll
+sl.pcl.dll
+sl.reflex.dll
+nvngx_dlss.dll
+nvngx_dlssd.dll
+nvngx_dlssg.dll
+nvngx_deepdvc.dll
+NvLowLatencyVk.dll
+
+# Build outputs (scoped — do NOT use a bare `build/`, the fork has a source package named build/)
+vulkanmod/build/
+vulkanmod/.gradle/
+native/build/
+native/out/
+*.obj
+*.pdb
+*.exp
+
+# Our native DLL (built artifact)
+mcdlss_native.dll
+
+# IDE / OS
+.idea/
+.vscode/
+*.iml
+.DS_Store
+Thumbs.db
+
+# Toolchain artifacts
+tools/*.cer
+
+# Run dirs
+run/
