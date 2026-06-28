@@ -135,6 +135,9 @@ public abstract class VRenderSystem {
         applyModelViewMatrix(MV);
         applyProjectionMatrix(P);
         calculateMVP();
+
+        // DLSS Phase 2: capture this frame's world view-projection for motion vectors.
+        net.vulkanmod.dlss.DlssFrameState.setViewProjection(MV, P);
     }
 
     public static void applyModelViewMatrix(Matrix4f mat) {

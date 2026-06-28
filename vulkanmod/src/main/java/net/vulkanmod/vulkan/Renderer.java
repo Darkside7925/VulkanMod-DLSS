@@ -234,6 +234,15 @@ public class Renderer {
     public void beginFrame() {
         this.recursion++;
 
+        // DLSS Phase 2: roll current→previous view-projection + advance jitter, once per real frame.
+        if (this.recursion <= 1) {
+            try {
+                net.vulkanmod.dlss.DlssFrameState.beginFrame();
+            } catch (Throwable t) {
+                // non-fatal: DLSS temporal state is best-effort
+            }
+        }
+
         if (swapChainUpdate && recursion <= 1) {
             recreateSwapChain();
             swapChainUpdate = false;
