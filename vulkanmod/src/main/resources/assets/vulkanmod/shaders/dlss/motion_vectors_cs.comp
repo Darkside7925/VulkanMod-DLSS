@@ -1,0 +1,40 @@
+#version 450
+
+// Compute version of the camera-only motion-vector reprojection, used by DlssGpuTest to
+// validate that the GPU produces the same vectors as the unit-tested MotionVectorMath —
+// fully autonomously (storage-buffer in/out + readback, no render pass, no screen).
+//
+// Reads per-pixel depth from a buffer, reprojects via inverse current VP + previous VP,
+// writes the UV-space motion (prevUV - curUV) to an output buffer.
+
+layout(local_size_x = 8, local_size_y = 8) in;
+
+layout(std430, binding = 0) readonly buffer DepthBuf  { float depthIn[];  };
+layout(std430, binding = 1) writeonly buffer MotionBuf { vec2  motionOut[]; };
+
+layout(push_constant) uniform PC {
+    mat4 invCurrentVP;
+    mat4 previousVP;
+    uint width;
+    uint height;
+};
+
+void main() {
+    uint x = gl_GlobalInvocationID.x;
+    uint y = gl_GlobalInvocationID.y;
+    if (x >= width || y >= height) return;
+    uint idx = y * width + x;
+
+    vec2 uv = (vec2(float(x), float(y)) + 0.5) / vec2(float(width), float(height));
+    float depth = depthIn[idx];
+
+    vec2 ndc = uv * 2.0 - 1.0;
+    vec4 clip = vec4(ndc, depth, 1.0);
+    vec4 world = invCurrentVP * clip;
+    world /= world.w;
+
+    vec4 prevClip = previousVP * vec4(world.xyz, 1.0);
+    vec2 prevUV = (prevClip.xy / prevClip.w) * 0.5 + 0.5;
+
+    motionOut[idx] = prevUV - uv;
+}

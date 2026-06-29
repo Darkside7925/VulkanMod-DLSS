@@ -41,6 +41,14 @@ public final class DlssGpuTest {
             LOGGER.error("[DLSS GpuTest]   FAIL  RG16F target allocation: {}", t.toString());
         }
 
+        // 2) Validate the GPU reprojection against the CPU reference (compute + readback).
+        try {
+            if (DlssComputeValidator.run()) pass++; else fail++;
+        } catch (Throwable t) {
+            fail++;
+            LOGGER.error("[DLSS GpuTest]   FAIL  compute validator: {}", t.toString());
+        }
+
         LOGGER.info("[DLSS GpuTest] ==== {} ({} passed, {} failed) ====",
                 fail == 0 ? "ALL PASS" : "FAILURES", pass, fail);
     }
