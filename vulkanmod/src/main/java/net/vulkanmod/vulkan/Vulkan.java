@@ -160,6 +160,18 @@ public class Vulkan {
             net.vulkanmod.dlss.NativeBridge.LOGGER.warn("DLSS feature report failed: {}", t.toString());
         }
 
+        // Phase 3: hand SL the Vulkan device + log DLSS optimal render resolutions.
+        try {
+            Queue.QueueFamilyIndices q = Queue.getQueueFamilies();
+            net.vulkanmod.dlss.NativeBridge.setupDlssDevice(
+                    instance.address(),
+                    DeviceManager.physicalDevice.address(),
+                    DeviceManager.vkDevice.address(),
+                    q.graphicsFamily, 0, q.computeFamily, 0);
+        } catch (Throwable t) {
+            net.vulkanmod.dlss.NativeBridge.LOGGER.warn("DLSS device setup failed: {}", t.toString());
+        }
+
     }
 
     static void createStagingBuffers() {

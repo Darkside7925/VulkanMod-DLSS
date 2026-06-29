@@ -70,6 +70,21 @@ public final class NativeBridge {
     /** slShutdown. Returns sl::Result (0 = eOk). */
     public static native int slShutdownNative();
 
+    // --- Phase 3 (DLSS-SR) native methods ---
+
+    /** slSetVulkanInfo — hand SL the Vulkan device (manual hooking). Returns sl::Result (0 = eOk). */
+    public static native int slSetVulkanInfoNative(long instance, long physicalDevice, long device,
+                                                   int gfxFamily, int gfxIndex, int cmpFamily, int cmpIndex);
+
+    /** slDLSSGetOptimalSettings for the given output size + sl::DLSSMode; returns a formatted summary. */
+    public static native String slDlssOptimalSettingsNative(int outputWidth, int outputHeight, int mode);
+
+    // sl::DLSSMode values.
+    public static final int DLSS_OFF = 0, DLSS_PERF = 1, DLSS_BALANCED = 2, DLSS_QUALITY = 3,
+            DLSS_ULTRA_PERF = 4, DLSS_ULTRA_QUALITY = 5, DLSS_DLAA = 6;
+
+    private static boolean vulkanInfoSet = false;
+
     /**
      * Attempts to load {@code mcdlss_native.dll}. Idempotent. Search order:
      * <ol>
@@ -200,6 +215,49 @@ public final class NativeBridge {
                     yesNo(dlssSupported), yesNo(frameGenSupported), yesNo(reflexSupported));
         } catch (Throwable t) {
             LOGGER.warn("DLSS feature query failed: {}", t.toString());
+        }
+    }
+
+    /**
+     * Hand Streamline the Vulkan device (required before any DLSS feature function) and log
+     * the optimal render resolutions per quality preset. Called once after device creation.
+     */
+    public static synchronized void setupDlssDevice(long instance, long physicalDevice, long device,
+                                                    int gfxFamily, int gfxIndex, int cmpFamily, int cmpIndex) {
+        if (!streamlineInitialized || vulkanInfoSet) return;
+        try {
+            int r = slSetVulkanInfoNative(instance, physicalDevice, device, gfxFamily, gfxIndex, cmpFamily, cmpIndex);
+            if (r != 0) {
+                LOGGER.warn("slSetVulkanInfo failed: {} — DLSS evaluate unavailable.", resultName(r));
+                return;
+            }
+            vulkanInfoSet = true;
+            LOGGER.info("Streamline Vulkan device set (manual hooking).");
+        } catch (Throwable t) {
+            LOGGER.warn("slSetVulkanInfo error: {}", t.toString());
+            return;
+        }
+
+        if (!dlssSupported) return;
+        try {
+            com.mojang.blaze3d.platform.Window w = net.minecraft.client.Minecraft.getInstance().getWindow();
+            int ow = w.getWidth(), oh = w.getHeight();
+            LOGGER.info("DLSS optimal render resolutions for output {}x{}:", ow, oh);
+            logDlssMode("DLAA       ", DLSS_DLAA, ow, oh);
+            logDlssMode("Quality    ", DLSS_QUALITY, ow, oh);
+            logDlssMode("Balanced   ", DLSS_BALANCED, ow, oh);
+            logDlssMode("Performance", DLSS_PERF, ow, oh);
+            logDlssMode("UltraPerf  ", DLSS_ULTRA_PERF, ow, oh);
+        } catch (Throwable t) {
+            LOGGER.warn("DLSS optimal-settings query failed: {}", t.toString());
+        }
+    }
+
+    private static void logDlssMode(String label, int mode, int ow, int oh) {
+        try {
+            LOGGER.info("  {} -> {}", label, slDlssOptimalSettingsNative(ow, oh, mode));
+        } catch (Throwable t) {
+            LOGGER.warn("  {} -> query error: {}", label, t.toString());
         }
     }
 

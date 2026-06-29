@@ -93,7 +93,10 @@ Java_net_vulkanmod_dlss_NativeBridge_slInitNative(JNIEnv* env, jclass, jstring j
     pref.engineVersion = "1.0";
     pref.projectId = "mc-dlss-vulkanmod";
     pref.renderAPI = sl::RenderAPI::eVulkan;
-    // Keep SL's sensible defaults for flags (CL state tracking disabled, OTA allowed).
+    // Manual hooking: we provide the Vulkan device via slSetVulkanInfo rather than letting
+    // SL proxy vkCreateDevice (LWJGL loads the real Vulkan loader).
+    pref.flags = sl::PreferenceFlags::eDisableCLStateTracking | sl::PreferenceFlags::eAllowOTA
+               | sl::PreferenceFlags::eLoadDownloadedPlugins | sl::PreferenceFlags::eUseManualHooking;
 
     sl::Result r = slInit(pref, sl::kSDKVersion);
     g_slInitialized = (r == sl::Result::eOk);
