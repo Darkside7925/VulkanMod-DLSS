@@ -184,6 +184,32 @@ public abstract class DeviceManager {
                 VRenderSystem.canSetLineWidth = true;
             }
 
+            // DLSS: enable the device extensions + Vulkan 1.2 features NGX requires, but ONLY what
+            // this GPU actually supports (so non-DLSS / older GPUs still create a device cleanly).
+            java.util.Set<String> enabledExtensions = new java.util.HashSet<>(Vulkan.REQUIRED_EXTENSION);
+            org.lwjgl.vulkan.VkPhysicalDeviceVulkan12Features dlssV12 = null;
+            java.util.List<String> dlssExts = net.vulkanmod.dlss.NativeBridge.dlssDeviceExtensions();
+            if (!dlssExts.isEmpty()) {
+                java.util.Set<String> supportedExts = new java.util.HashSet<>();
+                getAvailableExtension(stack, physicalDevice).forEach(e -> supportedExts.add(e.extensionNameString()));
+                java.util.List<String> addedExts = new java.util.ArrayList<>();
+                for (String e : dlssExts) if (supportedExts.contains(e)) { enabledExtensions.add(e); addedExts.add(e); }
+
+                org.lwjgl.vulkan.VkPhysicalDeviceVulkan12Features avail12 = org.lwjgl.vulkan.VkPhysicalDeviceVulkan12Features.calloc(stack);
+                avail12.sType$Default();
+                org.lwjgl.vulkan.VkPhysicalDeviceFeatures2 probe2 = org.lwjgl.vulkan.VkPhysicalDeviceFeatures2.calloc(stack);
+                probe2.sType$Default().pNext(avail12.address());
+                org.lwjgl.vulkan.VK11.vkGetPhysicalDeviceFeatures2(physicalDevice, probe2);
+
+                dlssV12 = org.lwjgl.vulkan.VkPhysicalDeviceVulkan12Features.calloc(stack);
+                dlssV12.sType$Default();
+                dlssV12.timelineSemaphore(avail12.timelineSemaphore());
+                dlssV12.descriptorIndexing(avail12.descriptorIndexing());
+                dlssV12.bufferDeviceAddress(avail12.bufferDeviceAddress());
+                net.vulkanmod.Initializer.LOGGER.info("[DLSS] enabling device extensions {} + 1.2 features (timelineSemaphore={}, descriptorIndexing={}, bufferDeviceAddress={})",
+                        addedExts, avail12.timelineSemaphore(), avail12.descriptorIndexing(), avail12.bufferDeviceAddress());
+            }
+
             VkDeviceCreateInfo createInfo = VkDeviceCreateInfo.calloc(stack);
             createInfo.sType$Default();
             createInfo.sType(VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO);
@@ -209,7 +235,13 @@ public abstract class DeviceManager {
 //                deviceVulkan13Features.pNext(deviceVulkan11Features.address());
             }
 
-            createInfo.ppEnabledExtensionNames(asPointerBuffer(Vulkan.REQUIRED_EXTENSION));
+            // Insert the DLSS 1.2 features into the pNext chain (right after the 1.1 features).
+            if (dlssV12 != null) {
+                dlssV12.pNext(deviceVulkan11Features.pNext());
+                deviceVulkan11Features.pNext(dlssV12.address());
+            }
+
+            createInfo.ppEnabledExtensionNames(asPointerBuffer(enabledExtensions));
 
 //            Configuration.DEBUG_FUNCTIONS.set(true);
 

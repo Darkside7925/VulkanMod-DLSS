@@ -91,7 +91,8 @@ Java_net_vulkanmod_dlss_NativeBridge_slInitNative(JNIEnv* env, jclass, jstring j
     pref.numFeaturesToLoad = (uint32_t)(sizeof(s_features) / sizeof(s_features[0]));
     pref.engine = sl::EngineType::eCustom;
     pref.engineVersion = "1.0";
-    pref.projectId = "mc-dlss-vulkanmod";
+    // NGX validates projectId as a GUID — an arbitrary string fails NGX init entirely.
+    pref.projectId = "e8a3c1d7-4f2b-4a9e-bc15-9d6f0a2b3c4d";
     pref.renderAPI = sl::RenderAPI::eVulkan;
     // Manual hooking: we provide the Vulkan device via slSetVulkanInfo rather than letting
     // SL proxy vkCreateDevice (LWJGL loads the real Vulkan loader).

@@ -39,7 +39,40 @@ SL_STRUCT_END()
 // SL_API resolves to extern "C" for consumers, so this links to the real (unmangled) symbol.
 extern "C" sl::Result slSetVulkanInfo(const sl::VulkanInfo& info);
 
+static std::string joinList(const char** arr, uint32_t n) {
+    std::string s;
+    for (uint32_t i = 0; i < n; ++i) { if (i) s += "\n"; s += (arr && arr[i]) ? arr[i] : ""; }
+    return s;
+}
+
 extern "C" {
+
+// String NativeBridge.slDlssDeviceExtensionsNative() — newline-joined VK device extensions DLSS needs.
+JNIEXPORT jstring JNICALL
+Java_net_vulkanmod_dlss_NativeBridge_slDlssDeviceExtensionsNative(JNIEnv* env, jclass) {
+    sl::FeatureRequirements req{};
+    if (slGetFeatureRequirements(sl::kFeatureDLSS, req) != sl::Result::eOk) return env->NewStringUTF("");
+    return env->NewStringUTF(joinList(req.vkDeviceExtensions, req.vkNumDeviceExtensions).c_str());
+}
+
+// String NativeBridge.slDlssInstanceExtensionsNative() — newline-joined VK instance extensions DLSS needs.
+JNIEXPORT jstring JNICALL
+Java_net_vulkanmod_dlss_NativeBridge_slDlssInstanceExtensionsNative(JNIEnv* env, jclass) {
+    sl::FeatureRequirements req{};
+    if (slGetFeatureRequirements(sl::kFeatureDLSS, req) != sl::Result::eOk) return env->NewStringUTF("");
+    return env->NewStringUTF(joinList(req.vkInstanceExtensions, req.vkNumInstanceExtensions).c_str());
+}
+
+// String NativeBridge.slDlssFeaturesNative() — newline-joined required VK 1.2/1.3 feature names (diagnostic).
+JNIEXPORT jstring JNICALL
+Java_net_vulkanmod_dlss_NativeBridge_slDlssFeaturesNative(JNIEnv* env, jclass) {
+    sl::FeatureRequirements req{};
+    if (slGetFeatureRequirements(sl::kFeatureDLSS, req) != sl::Result::eOk) return env->NewStringUTF("");
+    std::string s = joinList(req.vkFeatures12, req.vkNumFeatures12);
+    std::string f13 = joinList(req.vkFeatures13, req.vkNumFeatures13);
+    if (!f13.empty()) { if (!s.empty()) s += "\n"; s += f13; }
+    return env->NewStringUTF(s.c_str());
+}
 
 // int NativeBridge.slSetVulkanInfoNative(instance, physicalDevice, device, gfxFamily, gfxIndex, cmpFamily, cmpIndex)
 JNIEXPORT jint JNICALL

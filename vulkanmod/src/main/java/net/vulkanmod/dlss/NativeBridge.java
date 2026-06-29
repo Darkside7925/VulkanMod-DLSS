@@ -79,6 +79,37 @@ public final class NativeBridge {
     /** slDLSSGetOptimalSettings for the given output size + sl::DLSSMode; returns a formatted summary. */
     public static native String slDlssOptimalSettingsNative(int outputWidth, int outputHeight, int mode);
 
+    /** Newline-joined Vulkan device extensions DLSS requires (from slGetFeatureRequirements). */
+    public static native String slDlssDeviceExtensionsNative();
+    /** Newline-joined Vulkan instance extensions DLSS requires. */
+    public static native String slDlssInstanceExtensionsNative();
+    /** Newline-joined Vulkan 1.2/1.3 feature names DLSS requires (diagnostic). */
+    public static native String slDlssFeaturesNative();
+
+    /** Device extensions DLSS needs, for injection into VulkanMod's vkCreateDevice. Empty if unavailable. */
+    public static synchronized java.util.List<String> dlssDeviceExtensions() {
+        if (!streamlineInitialized) return java.util.List.of();
+        try {
+            String s = slDlssDeviceExtensionsNative();
+            if (s == null || s.isBlank()) return java.util.List.of();
+            return java.util.List.of(s.split("\n"));
+        } catch (Throwable t) {
+            return java.util.List.of();
+        }
+    }
+
+    /** Instance extensions DLSS needs, for injection into vkCreateInstance. */
+    public static synchronized java.util.List<String> dlssInstanceExtensions() {
+        if (!streamlineInitialized) return java.util.List.of();
+        try {
+            String s = slDlssInstanceExtensionsNative();
+            if (s == null || s.isBlank()) return java.util.List.of();
+            return java.util.List.of(s.split("\n"));
+        } catch (Throwable t) {
+            return java.util.List.of();
+        }
+    }
+
     // sl::DLSSMode values.
     public static final int DLSS_OFF = 0, DLSS_PERF = 1, DLSS_BALANCED = 2, DLSS_QUALITY = 3,
             DLSS_ULTRA_PERF = 4, DLSS_ULTRA_QUALITY = 5, DLSS_DLAA = 6;
@@ -190,6 +221,11 @@ public final class NativeBridge {
             if (r == 0) {
                 streamlineInitialized = true;
                 LOGGER.info("Streamline initialized (SDK 2.12.0, Vulkan).");
+                try {
+                    LOGGER.info("DLSS requires VK device extensions: {}", slDlssDeviceExtensionsNative().replace("\n", ", "));
+                    LOGGER.info("DLSS requires VK instance extensions: {}", slDlssInstanceExtensionsNative().replace("\n", ", "));
+                    LOGGER.info("DLSS requires VK 1.2/1.3 features: {}", slDlssFeaturesNative().replace("\n", ", "));
+                } catch (Throwable ignored) {}
             } else {
                 LOGGER.warn("Streamline init failed: {} — DLSS disabled.", resultName(r));
             }
