@@ -103,6 +103,15 @@ public class DefaultMainPass implements MainPass {
         Renderer.getInstance().endRenderPass(commandBuffer);
 
         if (this.mainFramebuffer == Renderer.getInstance().getSwapChain()) {
+            // DLSS-SR (DLAA), gated -Dmcdlss.dlss: AA/upscale the frame + composite back, before present.
+            try {
+                net.vulkanmod.dlss.DlssSuperResolution.render(commandBuffer,
+                        this.mainFramebuffer.getColorAttachment(), this.mainFramebuffer.getDepthAttachment(),
+                        this.mainFramebuffer.getWidth(), this.mainFramebuffer.getHeight());
+            } catch (Throwable t) {
+                net.vulkanmod.dlss.NativeBridge.LOGGER.warn("DLSS-SR stage error: {}", t.toString());
+            }
+
             try (MemoryStack stack = MemoryStack.stackPush()) {
                 this.mainFramebuffer.getColorAttachment().transitionImageLayout(stack, commandBuffer, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
             }

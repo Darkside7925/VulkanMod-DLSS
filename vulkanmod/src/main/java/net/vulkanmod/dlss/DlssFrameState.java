@@ -29,6 +29,9 @@ public final class DlssFrameState {
     // --- Matrices (row-major when handed to Streamline; JOML stores column-major, convert on export) ---
     private static final Matrix4f currentViewProj  = new Matrix4f();
     private static final Matrix4f previousViewProj  = new Matrix4f();
+    private static final Matrix4f currentProjection = new Matrix4f();   // P alone (cameraViewToClip)
+    private static final Matrix4f invCurVpTmp = new Matrix4f();
+    private static final Matrix4f clipToPrevClipTmp = new Matrix4f();
     private static boolean hasPrevious = false;
     private static boolean currentSetThisFrame = false;
 
@@ -132,6 +135,7 @@ public final class DlssFrameState {
     public static void setViewProjection(Matrix4f modelView, Matrix4f projection) {
         // VP = P * MV
         currentViewProj.set(projection).mul(modelView);
+        currentProjection.set(projection);
         currentSetThisFrame = true;
 
         // GPU copy: inverse of the current view-projection (for world reconstruction).
@@ -149,6 +153,33 @@ public final class DlssFrameState {
 
     /** L1 norm of (currentVP − previousVP) for the latest frame; ~0 when the camera is still. */
     public static float lastViewProjectionDelta() { return lastVpDelta; }
+
+    /**
+     * Fills the 40-float constants array the DLSS evaluate expects:
+     * [0..15]=cameraViewToClip (row-major), [16..31]=clipToPrevClip (row-major),
+     * [32,33]=jitter px, [34,35]=mvScale, [36]=near, [37]=far, [38]=fov, [39]=aspect.
+     */
+    public static synchronized void fillSrConstants(float[] out, float jitterPxX, float jitterPxY,
+                                                    float mvScaleX, float mvScaleY) {
+        rowMajor(currentProjection, out, 0);
+        // clipToPrevClip = previousVP * inverse(currentVP)
+        invCurVpTmp.set(currentViewProj).invert();
+        clipToPrevClipTmp.set(previousViewProj).mul(invCurVpTmp);
+        rowMajor(clipToPrevClipTmp, out, 16);
+        out[32] = jitterPxX; out[33] = jitterPxY;
+        out[34] = mvScaleX;  out[35] = mvScaleY;
+        out[36] = 0.05f;     out[37] = 10000.0f;
+        float fov = currentProjection.perspectiveFov();
+        out[38] = (Float.isNaN(fov) || fov <= 0f) ? (float) Math.toRadians(70.0) : fov;
+        out[39] = renderHeight != 0 ? (float) renderWidth / renderHeight : 1.7778f;
+    }
+
+    private static void rowMajor(Matrix4f m, float[] o, int off) {
+        o[off]=m.m00(); o[off+1]=m.m10(); o[off+2]=m.m20(); o[off+3]=m.m30();
+        o[off+4]=m.m01(); o[off+5]=m.m11(); o[off+6]=m.m21(); o[off+7]=m.m31();
+        o[off+8]=m.m02(); o[off+9]=m.m12(); o[off+10]=m.m22(); o[off+11]=m.m32();
+        o[off+12]=m.m03(); o[off+13]=m.m13(); o[off+14]=m.m23(); o[off+15]=m.m33();
+    }
 
     /** Van der Corput / Halton sequence value for the given (1-based) index and base. */
     private static float halton(int index, int base) {
