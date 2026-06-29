@@ -390,10 +390,15 @@ public class Renderer {
 
             vkResetFences(device, inFlightFences.get(currentFrame));
 
+            int dlssFi = (int) net.vulkanmod.dlss.DlssFrameState.frameCounter();
+            net.vulkanmod.dlss.NativeBridge.reflexMarker(net.vulkanmod.dlss.NativeBridge.PCL_SIM_END, dlssFi);
+            net.vulkanmod.dlss.NativeBridge.reflexMarker(net.vulkanmod.dlss.NativeBridge.PCL_RENDER_SUBMIT_START, dlssFi);
+
             if ((vkResult = vkQueueSubmit(DeviceManager.getGraphicsQueue().vkQueue(), submitInfo, inFlightFences.get(currentFrame))) != VK_SUCCESS) {
                 vkResetFences(device, inFlightFences.get(currentFrame));
                 throw new RuntimeException("Failed to submit draw command buffer: %s".formatted(VkResult.decode(vkResult)));
             }
+            net.vulkanmod.dlss.NativeBridge.reflexMarker(net.vulkanmod.dlss.NativeBridge.PCL_RENDER_SUBMIT_END, dlssFi);
 
             // Semaphore waited command buffers will be reset right after waiting this command buffer's fence
             Synchronization.INSTANCE.scheduleCbReset();
@@ -409,7 +414,9 @@ public class Renderer {
 
                 presentInfo.pImageIndices(stack.ints(imageIndex));
 
+                net.vulkanmod.dlss.NativeBridge.reflexMarker(net.vulkanmod.dlss.NativeBridge.PCL_PRESENT_START, dlssFi);
                 vkResult = vkQueuePresentKHR(DeviceManager.getPresentQueue().vkQueue(), presentInfo);
+                net.vulkanmod.dlss.NativeBridge.reflexMarker(net.vulkanmod.dlss.NativeBridge.PCL_PRESENT_END, dlssFi);
 
                 if (vkResult == VK_ERROR_OUT_OF_DATE_KHR || vkResult == VK_SUBOPTIMAL_KHR || swapChainUpdate) {
                     swapChainUpdate = true;
