@@ -219,14 +219,18 @@ public final class KaitenConfig {
     private void applyActiveProfile() {
         if (activeProfile == null) return;
         try {
-            // SR
-            net.kaiten.DlssSuperResolution.enabled = activeProfile.dlssEnabled;
+            String backend = activeProfile.backend != null ? activeProfile.backend : "dlss";
+
+            // SR / FSR
+            net.kaiten.DlssSuperResolution.enabled = activeProfile.dlssEnabled && "dlss".equals(backend);
+            net.kaiten.KaitenFSR.enabled = activeProfile.dlssEnabled && "fsr".equals(backend);
+
             // Update upscaling render state (render resolution, low-res framebuffer)
             try {
                 net.kaiten.KaitenRenderState.update(
                         net.minecraft.client.Minecraft.getInstance().getWindow().getWidth(),
                         net.minecraft.client.Minecraft.getInstance().getWindow().getHeight(),
-                        activeProfile.dlssMode);
+                        activeProfile.dlssMode, backend);
             } catch (Throwable ignored) {}
 
             // FG
@@ -244,10 +248,10 @@ public final class KaitenConfig {
             // Debug
             net.kaiten.DlssDebugOverlay.enabled = activeProfile.debugOverlay;
 
-            LOGGER.info("Kaiten: applied profile '{}' (SR={}, FG={}x{}, Reflex={})",
+            LOGGER.info("Kaiten: applied profile '{}' (SR={}, FG={}x{}, Reflex={}, backend={})",
                     activeProfile.name, activeProfile.dlssEnabled,
                     activeProfile.fgEnabled ? activeProfile.fgMultiplier + 1 : 0,
-                    activeProfile.reflexMode);
+                    activeProfile.reflexMode, backend);
         } catch (Throwable t) {
             LOGGER.warn("Kaiten: failed to apply profile: {}", t.toString());
         }

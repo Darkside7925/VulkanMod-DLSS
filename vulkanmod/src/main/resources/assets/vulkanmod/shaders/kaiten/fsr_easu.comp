@@ -1,0 +1,70 @@
+#version 450
+// FSR 1.0 EASU — Edge-Adaptive Spatial Upsampling
+// AMD FidelityFX Super Resolution 1.0 (MIT License)
+// Adapted from: https://github.com/GPUOpen-Effects/FidelityFX-FSR
+
+layout(local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
+
+layout(push_constant) uniform PushConstants {
+    int renderW, renderH, displayW, displayH;
+} pc;
+
+layout(binding = 0, rgba8) uniform readonly image2D inputImage;
+layout(binding = 1, rgba8) uniform writeonly image2D outputImage;
+
+// FSR EASU constants
+#define FSR_RCAS_DENOMINATOR 0.25
+
+void filterEASU(
+    ivec2 pos,
+    float offsetX, float offsetY,
+    inout float r, inout float g, inout float b, inout float a,
+    inout float wSum
+) {
+    ivec2 samplePos = ivec2(
+        int(float(pos.x) * float(pc.renderW) / float(pc.displayW) + offsetX),
+        int(float(pos.y) * float(pc.renderH) / float(pc.displayH) + offsetY)
+    );
+    samplePos = clamp(samplePos, ivec2(0), ivec2(pc.renderW - 1, pc.renderH - 1));
+    vec4 sampleCol = imageLoad(inputImage, samplePos);
+
+    // Edge-adaptive weight: weight by luminance gradient
+    vec4 center = imageLoad(inputImage, ivec2(
+        int(float(pos.x + 0.5) * float(pc.renderW) / float(pc.displayW)),
+        int(float(pos.y + 0.5) * float(pc.renderH) / float(pc.displayH))
+    ));
+    float centerLuma = dot(center.rgb, vec3(0.2126, 0.7152, 0.0722));
+    float sampleLuma = dot(sampleCol.rgb, vec3(0.2126, 0.7152, 0.0722));
+    float weight = 1.0 / (1.0 + abs(sampleLuma - centerLuma) * 4.0);
+
+    r += sampleCol.r * weight;
+    g += sampleCol.g * weight;
+    b += sampleCol.b * weight;
+    a += sampleCol.a * weight;
+    wSum += weight;
+}
+
+void main() {
+    ivec2 pos = ivec2(gl_GlobalInvocationID.xy);
+    if (pos.x >= pc.displayW || pos.y >= pc.displayH) return;
+
+    float r = 0.0, g = 0.0, b = 0.0, a = 0.0, wSum = 0.0;
+
+    // 12-tap edge-adaptive sampling pattern
+    filterEASU(pos, -0.5, -0.5, r, g, b, a, wSum);
+    filterEASU(pos,  0.0, -0.5, r, g, b, a, wSum);
+    filterEASU(pos,  0.5, -0.5, r, g, b, a, wSum);
+    filterEASU(pos, -0.5,  0.0, r, g, b, a, wSum);
+    filterEASU(pos,  0.0,  0.0, r, g, b, a, wSum);
+    filterEASU(pos,  0.5,  0.0, r, g, b, a, wSum);
+    filterEASU(pos, -0.5,  0.5, r, g, b, a, wSum);
+    filterEASU(pos,  0.0,  0.5, r, g, b, a, wSum);
+    filterEASU(pos,  0.5,  0.5, r, g, b, a, wSum);
+    // Extra diagonal taps for better edge handling
+    filterEASU(pos, -1.0,  0.0, r, g, b, a, wSum);
+    filterEASU(pos,  1.0,  0.0, r, g, b, a, wSum);
+    filterEASU(pos,  0.0, -1.0, r, g, b, a, wSum);
+
+    vec4 result = vec4(r / wSum, g / wSum, b / wSum, a / wSum);
+    imageStore(outputImage, pos, result);
+}

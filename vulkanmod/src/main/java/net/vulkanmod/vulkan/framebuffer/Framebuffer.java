@@ -64,10 +64,11 @@ public class Framebuffer {
 
     public void createImages() {
         if (this.hasColorAttachment) {
+            int usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_STORAGE_BIT;
             this.colorAttachment = VulkanImage.builder(this.width, this.height)
                                               .setName(this.name != null ? String.format("%s Color", this.name) : null)
                                               .setFormat(format)
-                                              .setUsage(VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT)
+                                              .setUsage(usage)
                                               .setLinearFiltering(linearFiltering)
                                               .setClamp(true)
                                               .createVulkanImage();

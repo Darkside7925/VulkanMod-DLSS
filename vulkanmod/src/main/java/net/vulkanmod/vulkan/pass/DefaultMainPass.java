@@ -122,11 +122,27 @@ public class DefaultMainPass implements MainPass {
             int w = this.mainFramebuffer.getWidth();
             int h = this.mainFramebuffer.getHeight();
 
-            // DLSS-SR (DLAA), gated -Dmcdlss.dlss: AA/upscale the frame + composite back, before present.
+            // DLSS-SR (DLAA) / FSR upscaling
+            // gated -Dmcdlss.dlss or via FSR backend selection
             try {
-                net.kaiten.DlssSuperResolution.render(commandBuffer, color, depth, w, h);
+                String backend = net.kaiten.KaitenRenderState.getBackend();
+                if ("fsr".equals(backend) && net.kaiten.KaitenFSR.enabled) {
+                    VulkanImage lowResColor = net.kaiten.KaitenRenderState.getLowResColor();
+                    if (lowResColor != null) {
+                        try (MemoryStack stack = MemoryStack.stackPush()) {
+                            lowResColor.transitionImageLayout(stack, commandBuffer, VK_IMAGE_LAYOUT_GENERAL);
+                            color.transitionImageLayout(stack, commandBuffer, VK_IMAGE_LAYOUT_GENERAL);
+                        }
+                        net.kaiten.KaitenFSR.upscale(commandBuffer, lowResColor, color,
+                                net.kaiten.KaitenRenderState.renderWidth(),
+                                net.kaiten.KaitenRenderState.renderHeight(), w, h);
+                        // FSR output is in GENERAL; done here, leave for FG/present below
+                    }
+                } else {
+                    net.kaiten.DlssSuperResolution.render(commandBuffer, color, depth, w, h);
+                }
             } catch (Throwable t) {
-                net.kaiten.NativeBridge.LOGGER.warn("DLSS-SR stage error: {}", t.toString());
+                net.kaiten.NativeBridge.LOGGER.warn("DLSS-SR/FSR stage error: {}", t.toString());
             }
 
             // DLSS Frame Generation, gated -Dmcdlss.fg: AI-interpolates frames. FG must

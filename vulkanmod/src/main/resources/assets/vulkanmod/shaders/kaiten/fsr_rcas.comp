@@ -1,0 +1,51 @@
+#version 450
+// FSR 1.0 RCAS — Robust Contrast-Adaptive Sharpening
+// AMD FidelityFX Super Resolution 1.0 (MIT License)
+
+layout(local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
+
+layout(push_constant) uniform PushConstants {
+    int displayW, displayH;
+} pc;
+
+layout(binding = 0, rgba8) uniform readonly image2D inputImage;
+layout(binding = 1, rgba8) uniform writeonly image2D outputImage;
+
+void main() {
+    ivec2 pos = ivec2(gl_GlobalInvocationID.xy);
+    if (pos.x >= pc.displayW || pos.y >= pc.displayH) return;
+
+    // Load center and neighbors
+    vec4 c  = imageLoad(inputImage, pos);
+    vec4 n  = imageLoad(inputImage, clamp(pos + ivec2( 0, -1), ivec2(0), ivec2(pc.displayW-1, pc.displayH-1)));
+    vec4 s  = imageLoad(inputImage, clamp(pos + ivec2( 0,  1), ivec2(0), ivec2(pc.displayW-1, pc.displayH-1)));
+    vec4 w  = imageLoad(inputImage, clamp(pos + ivec2(-1,  0), ivec2(0), ivec2(pc.displayW-1, pc.displayH-1)));
+    vec4 e  = imageLoad(inputImage, clamp(pos + ivec2( 1,  0), ivec2(0), ivec2(pc.displayW-1, pc.displayH-1)));
+
+    // Luma-based sharpening (RCAS algorithm)
+    float lumaC = dot(c.rgb, vec3(0.2126, 0.7152, 0.0722));
+    float lumaN = dot(n.rgb, vec3(0.2126, 0.7152, 0.0722));
+    float lumaS = dot(s.rgb, vec3(0.2126, 0.7152, 0.0722));
+    float lumaW = dot(w.rgb, vec3(0.2126, 0.7152, 0.0722));
+    float lumaE = dot(e.rgb, vec3(0.2126, 0.7152, 0.0722));
+
+    float minLuma = min(min(lumaN, lumaS), min(lumaW, lumaE));
+    float maxLuma = max(max(lumaN, lumaS), max(lumaW, lumaE));
+    float contrast = maxLuma - minLuma;
+
+    // Compute sharpened value
+    float sharp = lumaC + (4.0 * lumaC - lumaN - lumaS - lumaW - lumaE) * 0.25;
+
+    // Clip to local neighborhood (RCAS anti-ringing)
+    float minClip = lumaC - contrast * 0.5;
+    float maxClip = lumaC + contrast * 0.5;
+    sharp = clamp(sharp, minClip, maxClip);
+
+    // Blend based on contrast
+    float blend = contrast / (contrast + 0.0625);
+    float finalLuma = mix(lumaC, sharp, blend);
+
+    // Apply sharpening to RGB while preserving chroma
+    vec4 result = c + (finalLuma - lumaC);
+    imageStore(outputImage, pos, result);
+}

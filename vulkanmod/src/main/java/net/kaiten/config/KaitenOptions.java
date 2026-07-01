@@ -30,7 +30,9 @@ public final class KaitenOptions {
                     // Apply changes on "Apply" button press
                     var p = KaitenConfig.INSTANCE.getActiveProfile();
                     if (p != null) {
-                        net.kaiten.DlssSuperResolution.enabled = p.dlssEnabled;
+                        String backend = p.backend != null ? p.backend : "dlss";
+                        net.kaiten.DlssSuperResolution.enabled = p.dlssEnabled && "dlss".equals(backend);
+                        net.kaiten.KaitenFSR.enabled = p.dlssEnabled && "fsr".equals(backend);
                         if (p.fgEnabled) {
                             net.kaiten.DlssFrameGeneration.enabled = true;
                             net.kaiten.DlssFrameGeneration.setMultiplier(p.fgMultiplier);
@@ -71,10 +73,20 @@ public final class KaitenOptions {
 
     private static OptionBlock[] dlssOpts(KaitenConfig.Profile p) {
         var srToggle = new SwitchOption(
-                Component.literal("DLSS Super Resolution"),
+                Component.literal("DLSS/FSR Super Resolution"),
                 value -> { p.dlssEnabled = value; },
                 () -> p.dlssEnabled)
                 .setTooltip(v -> Component.literal("AI-powered upscaling and anti-aliasing (DLAA at native res)"));
+
+        var backendOption = new CyclingOption<>(
+                Component.literal("Backend"),
+                new String[]{"DLSS", "FSR 1.0"},
+                value -> {
+                    p.backend = "DLSS".equals(value) ? "dlss" : "fsr";
+                },
+                () -> "dlss".equals(p.backend) ? "DLSS" : "FSR 1.0")
+                .setTranslator(Component::literal)
+                .setTooltip(v -> Component.literal("DLSS (NVIDIA only) or FSR 1.0 (any GPU)"));
 
         var modeOption = new CyclingOption<>(
                 Component.literal("Quality Preset"),
@@ -101,7 +113,7 @@ public final class KaitenOptions {
                 .setTooltip(v -> Component.literal("Higher quality = better image, lower FPS boost"));
 
         return new OptionBlock[]{
-                new OptionBlock("Super Resolution", new Option<?>[]{srToggle, modeOption})
+                new OptionBlock("Super Resolution", new Option<?>[]{srToggle, backendOption, modeOption})
         };
     }
 
