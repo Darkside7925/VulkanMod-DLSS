@@ -33,6 +33,11 @@ public final class KaitenOptions {
                         String backend = p.backend != null ? p.backend : "dlss";
                         net.kaiten.DlssSuperResolution.enabled = p.dlssEnabled && "dlss".equals(backend);
                         net.kaiten.KaitenFSR.enabled = p.dlssEnabled && "fsr".equals(backend);
+                        // Update render resolution for DLSS/FSR upscaling
+                        try {
+                            var w = net.minecraft.client.Minecraft.getInstance().getWindow();
+                            net.kaiten.KaitenRenderState.update(w.getWidth(), w.getHeight(), p.dlssMode, backend);
+                        } catch (Throwable ignored) {}
                         if (p.fgEnabled) {
                             net.kaiten.DlssFrameGeneration.enabled = true;
                             net.kaiten.DlssFrameGeneration.setMultiplier(p.fgMultiplier);
