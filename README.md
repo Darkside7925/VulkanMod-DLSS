@@ -1,4 +1,4 @@
-# Kaiten — DLSS 4 for Minecraft (VulkanMod fork)
+# Kaiten - DLSS 4 for Minecraft (VulkanMod fork)
 
 **NVIDIA DLSS 4: Super Resolution + Frame Generation + Reflex** for Minecraft Java Edition 1.21.11, running on a VulkanMod fork.
 
