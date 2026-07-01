@@ -33,6 +33,7 @@ public final class DlssSuperResolution {
     private static int width, height;    // display resolution
     private static int renderW, renderH; // render (input) resolution for upscale
     private static long framesRun = 0;
+    private static int lastTransientErr = 0;
     private static final float[] consts = new float[40];
 
     /** Run DLSS on the rendered color (using depth), composite the result back into color. */
@@ -61,7 +62,8 @@ public final class DlssSuperResolution {
                 renderH = net.kaiten.KaitenRenderState.renderHeight();
                 LOGGER.info("[DLSS-SR] upscaling mode={} {}x{} -> {}x{}", modeName(mode), renderW, renderH, w, h);
             } else if (desiredMode != NativeBridge.DLSS_DLAA) {
-                LOGGER.info("[DLSS-SR] profile mode={} - using DLAA until low-res render pass is implemented", modeName(desiredMode));
+                if (framesRun == 0 || framesRun % 600 == 0)
+                    LOGGER.info("[DLSS-SR] profile mode={} - using DLAA (upscaling not active)", modeName(desiredMode));
             }
         }} catch (Throwable ignored) {}
 
@@ -92,12 +94,15 @@ public final class DlssSuperResolution {
 
             if (r != 0) {
                 int errCode = r;
-                // eErrorNGXFailed (15) can happen transiently during mode/resize
-                // switches when the swapchain briefly becomes 10x10. Skip this
-                // frame instead of permanently disabling DLSS.
-                if (errCode == 15) {
-                    LOGGER.warn("[DLSS-SR] evaluate NGXFailed (transient) - frame {}, retrying next frame", DlssFrameState.frameCounter());
-                    return; // do NOT set failed=true
+                // Transient errors: skip frame, retry next. Do NOT permanently disable.
+                // 15=eErrorNGXFailed (resize/mode switch causes 10x10 swapchain)
+                // 27=eErrorDuplicateConstants (SR+FG both set constants in same frame)
+                // 5 =eErrorInvalidParameter (temporary during pipeline transitions)
+                if (errCode == 15 || errCode == 27 || errCode == 5) {
+                    if (errCode != lastTransientErr || framesRun % 300 == 0)
+                        LOGGER.warn("[DLSS-SR] evaluate transient err={} frame={} - retrying", errCode, DlssFrameState.frameCounter());
+                    lastTransientErr = errCode;
+                    return;
                 }
                 failed = true;
                 LOGGER.error("[DLSS-SR] evaluate failed ({}) - disabling in-frame DLSS.",
@@ -192,8 +197,10 @@ public final class DlssSuperResolution {
 
             if (r != 0) {
                 int errCode = r;
-                if (errCode == 15) { // eErrorNGXFailed - transient during resize/mode switch
-                    LOGGER.warn("[DLSS-SR] upscale NGXFailed (transient) - retrying next frame");
+                if (errCode == 15 || errCode == 27 || errCode == 5) { // transient errors
+                    if (errCode != lastTransientErr || framesRun % 300 == 0)
+                        LOGGER.warn("[DLSS-SR] upscale transient err={} - retrying", errCode);
+                    lastTransientErr = errCode;
                     return;
                 }
                 failed = true; LOGGER.error("[DLSS-SR] upscale failed ({})", safeName(r)); return; }
