@@ -106,15 +106,10 @@ public class DefaultMainPass implements MainPass {
     @Override
     public void end(VkCommandBuffer commandBuffer) {
         Renderer.getInstance().endRenderPass(commandBuffer);
-        // --- DLSS/FSR upscaling: switch to swapchain for DLSS + present ---
-        if (net.kaiten.KaitenRenderState.isUpscaling()) {
-            try (MemoryStack stack = MemoryStack.stackPush()) {
-                VulkanImage swapColor = this.mainFramebuffer.getColorAttachment();
-                swapColor.transitionImageLayout(stack, commandBuffer, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
-                Renderer.getInstance().beginRenderPass(this.mainRenderPass, this.mainFramebuffer);
-                Renderer.setViewport(0, 0, this.mainFramebuffer.getWidth(), this.mainFramebuffer.getHeight(), stack);
-            }
-        }
+        // --- DLSS/FSR upscaling: end low-res pass, DLSS-SR/FG write to swapchain ---
+        // The DLSS-SR vkCmdCopyImage and FG interposer must run OUTSIDE any render pass.
+        // We do NOT begin a new render pass here — the upscale/frame-gen operations
+        // use compute and transfer commands, not graphics pipelines.
 
         if (this.mainFramebuffer == Renderer.getInstance().getSwapChain() || net.kaiten.KaitenRenderState.isUpscaling()) {
             VulkanImage color = this.mainFramebuffer.getColorAttachment();
@@ -136,9 +131,23 @@ public class DefaultMainPass implements MainPass {
                         net.kaiten.KaitenFSR.upscale(commandBuffer, lowResColor, color,
                                 net.kaiten.KaitenRenderState.renderWidth(),
                                 net.kaiten.KaitenRenderState.renderHeight(), w, h);
-                        // FSR output is in GENERAL; done here, leave for FG/present below
+                    }
+                } else if (net.kaiten.KaitenRenderState.isUpscaling()) {
+                    // DLSS upscaling: feed low-res rendered frame + depth as inputs
+                    VulkanImage lowResColor = net.kaiten.KaitenRenderState.getLowResColor();
+                    VulkanImage lowResDepth = net.kaiten.KaitenRenderState.getLowResDepth();
+                    if (lowResColor != null && lowResDepth != null) {
+                        net.kaiten.DlssSuperResolution.renderUpscale(commandBuffer,
+                                lowResColor, lowResDepth,
+                                net.kaiten.KaitenRenderState.renderWidth(),
+                                net.kaiten.KaitenRenderState.renderHeight(),
+                                color, w, h);
+                    } else {
+                        // Fallback: no low-res targets yet, run DLAA on swapchain
+                        net.kaiten.DlssSuperResolution.render(commandBuffer, color, depth, w, h);
                     }
                 } else {
+                    // DLAA: native-res AA on the swapchain
                     net.kaiten.DlssSuperResolution.render(commandBuffer, color, depth, w, h);
                 }
             } catch (Throwable t) {
